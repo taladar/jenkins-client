@@ -1,0 +1,31 @@
+#!/bin/bash
+
+set -e -u
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 <major|minor|patch>" >&2
+  exit 1
+fi
+
+level="$1"
+
+cargo set-version --bump "${level}"
+
+version="$(cargo get package.version)"
+
+git cliff --prepend CHANGELOG.md -u -t "jenkins_api_${version}"
+
+rumdl fmt CHANGELOG.md
+
+cargo build
+
+git add CHANGELOG.md Cargo.toml Cargo.lock
+
+git commit -m "chore(release): Release version ${version}"
+
+git tag "jenkins_api_${version}"
+
+for remote in $(git remote); do
+  git push "${remote}"
+  git push "${remote}" "jenkins_api_${version}"
+done
