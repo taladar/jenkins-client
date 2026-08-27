@@ -19,4 +19,5 @@ pub use error::Error;
 pub use types::{
     Build, BuildAction, BuildNumber, BuildResult, BuildsWrapper, Cause, Crumb, DurationMillis, Job,
     JobName, JobsWrapper, QueueItem, QueueItemId, QueueItemsWrapper, Revision, Scm, Timestamp,
+    View, ViewName,
 };

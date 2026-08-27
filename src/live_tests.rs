@@ -174,6 +174,46 @@ fn test_job_name_with_spaces_round_trips() -> Result<(), Box<dyn Error>> {
 }
 
 #[traced_test]
+#[test]
+#[ignore = "live test against a Jenkins controller, run with `cargo test -- --ignored` after setting JENKINS_TEST_INSTANCE_CONFIG"]
+fn test_views_are_a_tree() -> Result<(), Box<dyn Error>> {
+    let Some(jenkins) = blocking_client()? else {
+        return Ok(());
+    };
+    let views = jenkins.views(None)?;
+    assert!(!views.is_empty(), "the controller should have some views");
+    // the nested-view plugin is in use, so at least one view should have
+    // children; a flat result would mean the tree spec is not nesting
+    let nested = views.iter().filter(|v| !v.views.is_empty()).count();
+    assert!(nested > 0, "expected at least one view with nested views");
+    Ok(())
+}
+
+#[traced_test]
+#[tokio::test]
+#[ignore = "live test against a Jenkins controller, run with `cargo test -- --ignored` after setting JENKINS_TEST_INSTANCE_CONFIG"]
+async fn test_resolve_view_and_fetch_it_async() -> Result<(), Box<dyn Error>> {
+    let Some(jenkins) = async_client()? else {
+        return Ok(());
+    };
+    let roots = jenkins.views(None).await?;
+    // pick a view that actually has jobs so the round trip is meaningful
+    let Some(name) = roots
+        .iter()
+        .flat_map(|v| v.views.iter())
+        .find(|v| !v.all_jobs().is_empty())
+        .and_then(|v| v.name.clone())
+    else {
+        return Ok(());
+    };
+    let (path, view) = jenkins.resolve_view(&name.0).await?;
+    assert_eq!(view.name.as_ref(), Some(&name));
+    let fetched = jenkins.view(&path, None).await?;
+    assert_eq!(fetched.name.as_ref(), Some(&name));
+    Ok(())
+}
+
+#[traced_test]
 #[tokio::test]
 #[ignore = "live test against a Jenkins controller, run with `cargo test -- --ignored` after setting JENKINS_TEST_INSTANCE_CONFIG"]
 async fn test_find_build_for_revision_async() -> Result<(), Box<dyn Error>> {

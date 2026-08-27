@@ -18,6 +18,7 @@
 pub mod build;
 pub mod job;
 pub mod queue;
+pub mod view;
 
 use std::borrow::Cow;
 use std::str::from_utf8;
@@ -31,10 +32,11 @@ use url::Url;
 use crate::api::build::{ConsoleText, GetBuild, GetLastBuild};
 use crate::api::job::{GetJob, ListBuilds, ListJobs, TriggerBuild};
 use crate::api::queue::{GetQueueItem, ListQueue, WhoAmI as WhoAmIEndpoint};
+use crate::api::view::{GetView, ListViews};
 use crate::config::{JenkinsAuth, JenkinsInstance};
 use crate::types::{
     Build, BuildNumber, BuildsWrapper, Crumb, Job, JobName, JobsWrapper, QueueItem, QueueItemId,
-    QueueItemsWrapper, Revision, WhoAmI,
+    QueueItemsWrapper, Revision, View, ViewName, ViewsWrapper, WhoAmI,
 };
 
 /// the characters that have to be percent-encoded inside a URL path segment
@@ -723,6 +725,108 @@ macro_rules! client_impl {
             pub $($async)* fn whoami(&self) -> Result<WhoAmI, crate::Error> {
                 let endpoint = WhoAmIEndpoint::builder().build()?;
                 self.json_response_body(&endpoint) $($await)*
+            }
+
+
+            /// list the controller's views as a tree
+            ///
+            /// With the nested-view plugin a view can contain other views, so
+            /// the result is a forest of top-level views rather than a flat
+            /// list. `depth` bounds how far the nesting is followed; `None`
+            /// uses [`ListViews::DEFAULT_DEPTH`].
+            ///
+            /// # Errors
+            ///
+            /// this can return an error if the web request fails or Jenkins
+            /// returns an error response
+            pub $($async)* fn views(&self, depth: Option<u8>) -> Result<Vec<View>, crate::Error> {
+                let mut builder = ListViews::builder();
+                if let Some(depth) = depth {
+                    builder.depth(depth);
+                }
+                let endpoint = builder.build()?;
+                let wrapper: ViewsWrapper<View> = self.json_response_body(&endpoint) $($await)*?;
+                Ok(wrapper.views)
+            }
+
+            /// fetch one view by its path of names from the root
+            ///
+            /// # Errors
+            ///
+            /// this can return an error if the web request fails or Jenkins
+            /// returns an error response, in particular a 404 when no view
+            /// exists at that path
+            pub $($async)* fn view(
+                &self,
+                path: &[ViewName],
+                depth: Option<u8>,
+            ) -> Result<View, crate::Error> {
+                let mut builder = GetView::builder();
+                builder.path(path.to_vec());
+                if let Some(depth) = depth {
+                    builder.depth(depth);
+                }
+                let endpoint = builder.build()?;
+                self.json_response_body(&endpoint) $($await)*
+            }
+
+            /// resolve a view given either a full `A/B/C` path or a bare name
+            ///
+            /// A bare name is looked for anywhere in the tree, because that is
+            /// what a human types. Ambiguity is an error rather than a guess:
+            /// picking one of several same-named views silently would quietly
+            /// filter against the wrong set of jobs.
+            ///
+            /// # Errors
+            ///
+            /// this can return an error if the web request fails, no view of
+            /// that name exists, or the name matches more than one view
+            pub $($async)* fn resolve_view(
+                &self,
+                query: &str,
+            ) -> Result<(Vec<ViewName>, View), crate::Error> {
+                let roots = self.views(None) $($await)*?;
+                let root = View {
+                    views: roots,
+                    ..View::default()
+                };
+                let path: Vec<ViewName> = query
+                    .split('/')
+                    .filter(|segment| !segment.is_empty())
+                    .map(|segment| ViewName(segment.to_owned()))
+                    .collect();
+                if path.len() > 1
+                    && let Some(view) = root.find_path(&path)
+                {
+                    return Ok((path, view.clone()));
+                }
+                let Some(wanted) = path.last() else {
+                    return Err(crate::Error::ViewNotFound {
+                        query: query.to_owned(),
+                    });
+                };
+                let mut matches = root.find_by_name(wanted);
+                match matches.len() {
+                    0 => Err(crate::Error::ViewNotFound {
+                        query: query.to_owned(),
+                    }),
+                    1 => {
+                        let (found_path, view) = matches.remove(0);
+                        Ok((found_path, view.clone()))
+                    }
+                    _ => Err(crate::Error::AmbiguousView {
+                        query: query.to_owned(),
+                        candidates: matches
+                            .iter()
+                            .map(|(path, _)| {
+                                path.iter()
+                                    .map(|name| name.0.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join("/")
+                            })
+                            .collect(),
+                    }),
+                }
             }
 
             /// list every job on the controller together with its SCM

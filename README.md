@@ -49,11 +49,24 @@ Two client settings matter to this crate:
 | Area | Operations |
 |---|---|
 | Discovery | `jobs`, `jobs_with_scm`, `job`, `downstream_projects` |
+| Views | `views`, `view`, `resolve_view` |
 | Build results | `builds`, `build`, `last_build`, `console_text` |
 | Correlation | `find_build_for_revision`, `find_build_for_upstream` |
 | Triggering | `trigger_build`, `queue`, `queue_item` |
 | Waiting | `wait_for_build`, `wait_for_queue_item` |
 | Diagnostics | `whoami` |
+
+## Views are a tree
+
+With the nested-view plugin a view can contain other views, so `views` returns
+a forest rather than a flat list and `View::all_jobs` walks it. Jenkins' `tree`
+parameter has no recursion, so the nesting is spelled out to a bounded depth —
+one request instead of one per view.
+
+`resolve_view` takes either a full `Parent/Child` path or a bare name. A bare
+name is searched for anywhere in the tree, because that is what a person types;
+if it matches more than one view the call fails and lists the candidates rather
+than guessing, since silently picking one would filter against the wrong jobs.
 
 ## Correlating a build to a commit
 

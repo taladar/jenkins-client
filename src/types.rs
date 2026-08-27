@@ -74,6 +74,34 @@ pub struct BuildNumber(pub u64);
 )]
 pub struct QueueItemId(pub u64);
 
+/// the name of a Jenkins view
+#[derive(
+    Debug,
+    Clone,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    derive_more::Display,
+    derive_more::FromStr,
+)]
+pub struct ViewName(pub String);
+
+impl From<&str> for ViewName {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+impl From<String> for ViewName {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
 /// a git revision (SHA1) as Jenkins reports it in build data
 #[derive(
     Debug,
@@ -492,6 +520,95 @@ pub struct WhoAmI {
     pub name: Option<String>,
 }
 
+/// a Jenkins view
+///
+/// With the nested-view plugin a view can contain other views as well as jobs,
+/// so this is a tree rather than a flat list. A plain `ListView` or
+/// `SectionedView` has jobs and no children; a `NestedView` is the other way
+/// round.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct View {
+    /// the Jenkins class name of the view type, e.g.
+    /// `hudson.plugins.nested_view.NestedView` or `hudson.model.ListView`
+    #[serde(rename = "_class", default)]
+    pub class: Option<String>,
+    /// the view name
+    #[serde(default)]
+    pub name: Option<ViewName>,
+    /// the absolute URL of the view in the Jenkins web UI
+    #[serde(default)]
+    pub url: Option<String>,
+    /// the jobs directly in this view
+    #[serde(default)]
+    pub jobs: Vec<Job>,
+    /// the views nested inside this one
+    #[serde(default)]
+    pub views: Vec<Self>,
+}
+
+impl View {
+    /// the jobs in this view and, recursively, in every view nested inside it
+    ///
+    /// This is what "the jobs of a view" means to a person looking at a nested
+    /// view in the web UI, where the child views are part of what they are
+    /// looking at.
+    #[must_use]
+    pub fn all_jobs(&self) -> Vec<&Job> {
+        let mut jobs: Vec<&Job> = self.jobs.iter().collect();
+        for nested in &self.views {
+            jobs.extend(nested.all_jobs());
+        }
+        jobs
+    }
+
+    /// find a view by its path from this view downwards, e.g.
+    /// `["Overview", "Beam"]` starting at the root
+    #[must_use]
+    pub fn find_path(&self, path: &[ViewName]) -> Option<&Self> {
+        let Some((first, rest)) = path.split_first() else {
+            return Some(self);
+        };
+        let child = self
+            .views
+            .iter()
+            .find(|view| view.name.as_ref() == Some(first))?;
+        child.find_path(rest)
+    }
+
+    /// every view at or below this one whose name matches, paired with the
+    /// path that reaches it
+    ///
+    /// Used to resolve a bare view name typed by a human, which is ambiguous
+    /// when the same name appears in more than one branch of the tree.
+    #[must_use]
+    pub fn find_by_name(&self, wanted: &ViewName) -> Vec<(Vec<ViewName>, &Self)> {
+        let mut found = Vec::new();
+        self.collect_by_name(wanted, &mut Vec::new(), &mut found);
+        found
+    }
+
+    /// recursive worker for [`Self::find_by_name`]
+    fn collect_by_name<'a>(
+        &'a self,
+        wanted: &ViewName,
+        prefix: &mut Vec<ViewName>,
+        found: &mut Vec<(Vec<ViewName>, &'a Self)>,
+    ) {
+        for child in &self.views {
+            let Some(name) = child.name.as_ref() else {
+                continue;
+            };
+            prefix.push(name.clone());
+            if name == wanted {
+                found.push((prefix.clone(), child));
+            }
+            child.collect_by_name(wanted, prefix, found);
+            prefix.pop();
+        }
+    }
+}
+
 /// a wrapper for API responses that return a list of jobs
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct JobsWrapper<T> {
@@ -506,6 +623,14 @@ pub struct BuildsWrapper<T> {
     /// the builds
     #[serde(default = "Vec::new")]
     pub builds: Vec<T>,
+}
+
+/// a wrapper for API responses that return a list of views
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct ViewsWrapper<T> {
+    /// the views
+    #[serde(default = "Vec::new")]
+    pub views: Vec<T>,
 }
 
 /// a wrapper for API responses that return a list of queue items
@@ -549,6 +674,96 @@ mod test {
         assert_eq!(build.built_revision(), None);
         assert!(build.is_finished());
         Ok(())
+    }
+
+    fn view(name: &str, jobs: &[&str], children: Vec<View>) -> View {
+        View {
+            class: None,
+            name: Some(ViewName(name.to_owned())),
+            url: None,
+            jobs: jobs
+                .iter()
+                .map(|j| Job {
+                    name: Some(JobName((*j).to_owned())),
+                    ..Job::default()
+                })
+                .collect(),
+            views: children,
+        }
+    }
+
+    fn sample_tree() -> View {
+        // the real shape: a NestedView root, some nested branches, some leaves
+        view(
+            "root",
+            &[],
+            vec![
+                view("Beam", &["beam-a", "beam-b"], Vec::new()),
+                view(
+                    "Beltz",
+                    &[],
+                    vec![view("Website", &["beltz-web"], Vec::new())],
+                ),
+                view(
+                    "Other",
+                    &[],
+                    vec![view("Website", &["other-web"], Vec::new())],
+                ),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_all_jobs_includes_nested_views() {
+        let tree = sample_tree();
+        let names: Vec<&str> = tree
+            .all_jobs()
+            .iter()
+            .filter_map(|j| j.name.as_ref().map(|n| n.0.as_str()))
+            .collect();
+        assert_eq!(names, vec!["beam-a", "beam-b", "beltz-web", "other-web"]);
+    }
+
+    #[test]
+    fn test_find_path_walks_the_tree() {
+        let tree = sample_tree();
+        let found = tree.find_path(&[ViewName("Beltz".to_owned()), ViewName("Website".to_owned())]);
+        assert_eq!(
+            found.and_then(|v| v.name.clone()),
+            Some(ViewName("Website".to_owned()))
+        );
+        assert_eq!(
+            found.map(|v| v.all_jobs().len()),
+            Some(1),
+            "the Beltz Website view has one job, not both Website views' jobs"
+        );
+        assert!(tree.find_path(&[ViewName("Nope".to_owned())]).is_none());
+    }
+
+    #[test]
+    fn test_find_by_name_reports_every_match_with_its_path() {
+        // "Website" exists under two different parents, which is exactly the
+        // ambiguity a bare name has to surface rather than guess at
+        let tree = sample_tree();
+        let matches = tree.find_by_name(&ViewName("Website".to_owned()));
+        let paths: Vec<String> = matches
+            .iter()
+            .map(|(path, _)| {
+                path.iter()
+                    .map(|n| n.0.as_str())
+                    .collect::<Vec<_>>()
+                    .join("/")
+            })
+            .collect();
+        assert_eq!(paths, vec!["Beltz/Website", "Other/Website"]);
+    }
+
+    #[test]
+    fn test_find_by_name_unique_match() {
+        let tree = sample_tree();
+        let matches = tree.find_by_name(&ViewName("Beam".to_owned()));
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches.first().map(|(p, _)| p.len()), Some(1));
     }
 
     #[test]

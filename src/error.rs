@@ -54,6 +54,20 @@ pub enum Error {
     /// missing or does not have the expected shape.
     #[error("Jenkins did not return a usable queue item location: {0}")]
     NoQueueItemLocation(String),
+    /// no view matched the given name or path
+    #[error("no view matching {query:?} exists")]
+    ViewNotFound {
+        /// what was asked for
+        query: String,
+    },
+    /// a bare view name matched more than one view in the tree
+    #[error("{query:?} matches several views: {}", candidates.join(", "))]
+    AmbiguousView {
+        /// what was asked for
+        query: String,
+        /// the paths of the views that matched
+        candidates: Vec<String>,
+    },
     /// waiting for a build to reach a terminal state timed out
     #[error("timed out after {waited:?} waiting for {what}")]
     Timeout {
