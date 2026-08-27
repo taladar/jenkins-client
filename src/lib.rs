@@ -1,30 +1,22 @@
 #![doc = include_str!("../README.md")]
-
-use thiserror::Error;
-
-use tracing::instrument;
-
-/// Error type for jenkins_api
-#[derive(Debug, Error)]
-pub enum Error {
-    /// This variant is just here as a placeholder to show the syntax
-    #[error("error type not implemented yet")]
-    NotImplementedError,
-}
-
-/// Just a function to illustrate use of instrument and Error
-#[expect(
-    dead_code,
-    reason = "This example function is not called by anything since this is a library but we need to be clippy clean for the initial commit to pass pre-commit hooks"
+#![expect(
+    clippy::module_name_repetitions,
+    reason = "endpoint types are named after the Jenkins operation they perform (GetJob, GetBuild, ListQueue), which reads better at the call site than stripping the module name would"
 )]
-#[instrument]
-async fn example_fun() -> Result<(), Error> {
-    tracing::debug!("{:#?}", "Hello, World!");
-    Ok(())
-}
 
+pub mod api;
+pub mod config;
+pub mod error;
 #[cfg(test)]
-mod test {
-    //use super::*;
-    //use pretty_assertions::{assert_eq, assert_ne};
-}
+mod fixture_tests;
+#[cfg(test)]
+mod live_tests;
+pub mod types;
+
+pub use api::{Endpoint, Jenkins, JenkinsAsync, ParamValue, QueryParams, ReturnsJsonResponse};
+pub use config::{JenkinsAuth, JenkinsInstance};
+pub use error::Error;
+pub use types::{
+    Build, BuildAction, BuildNumber, BuildResult, BuildsWrapper, Cause, Crumb, DurationMillis, Job,
+    JobName, JobsWrapper, QueueItem, QueueItemId, QueueItemsWrapper, Revision, Scm, Timestamp,
+};

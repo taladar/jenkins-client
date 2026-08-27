@@ -1,0 +1,5 @@
+{
+    "_class": "org.jenkinsci.plugins.strictcrumbissuer.StrictCrumbIssuer",
+    "crumb": "0000000000000000000000000000000000000000000000000000000000000000",
+    "crumbRequestField": "Jenkins-Crumb"
+}

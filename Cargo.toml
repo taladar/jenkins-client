@@ -15,11 +15,27 @@ exclude = [".env", "tarpaulin-report.html", "tarpaulin-report.json"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bytes = "1.12.1"
+derive_builder = "0.20.2"
+derive_more = { version = "2.1.1", features = ["debug", "display", "from_str"] }
+fs-err = "3.3.1"
+percent-encoding = "2.3.2"
+reqwest = { version = "0.13.4", features = ["blocking", "json", "cookies"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+serde_path_to_error = "0.1.20"
 thiserror = { version = "2.0.20" }
+time = { version = "0.3.55", features = ["macros", "serde", "serde-human-readable"] }
+tokio = { version = "1.53.1", features = ["time"] }
+toml = "1.1.4"
 tracing = { version = "0.1.44" }
+url = "2.5.8"
 
 [dev-dependencies]
+dotenvy = "0.15.7"
 pretty_assertions = { version = "1.4.1" }
+tokio = { version = "1.53.1", features = ["macros", "net", "rt", "time"] }
+tracing-test = "0.2.6"
 
 [profile.release]
 # do not strip debug info from release builds, useful for debugging those, cargo-flamegraph profiling or similar use cases

@@ -1,0 +1,63 @@
+{
+    "_class": "hudson.model.FreeStyleBuild",
+    "actions": [
+        {
+            "_class": "hudson.model.CauseAction",
+            "causes": [
+                {
+                    "_class": "hudson.triggers.SCMTrigger$SCMTriggerCause",
+                    "shortDescription": "Started by an SCM change"
+                },
+                {
+                    "_class": "hudson.triggers.SCMTrigger$SCMTriggerCause",
+                    "shortDescription": "Started by an SCM change"
+                }
+            ]
+        },
+        {},
+        {
+            "_class": "com.nirima.jenkins.plugins.docker.action.DockerBuildAction"
+        },
+        {
+            "_class": "jenkins.metrics.impl.TimeInQueueAction"
+        },
+        {},
+        {},
+        {},
+        {
+            "_class": "hudson.plugins.git.util.BuildData",
+            "lastBuiltRevision": {
+                "SHA1": "602f5ccc62a3b534f69425a153c81a81bb1ab226",
+                "branch": [
+                    {
+                        "SHA1": "602f5ccc62a3b534f69425a153c81a81bb1ab226",
+                        "name": "origin/master"
+                    }
+                ]
+            },
+            "remoteUrls": [
+                "git@gitlab.saltation.de:rust/redmine-api.git"
+            ]
+        },
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {
+            "_class": "org.jenkinsci.plugins.displayurlapi.actions.RunDisplayAction"
+        }
+    ],
+    "building": false,
+    "duration": 22159,
+    "number": 44,
+    "result": "SUCCESS",
+    "timestamp": 1787732102136,
+    "url": "https://jenkins.saltation.de/job/saltation%20-%20redmine_api%20-%20Check%20Only%20Rust%20Package%20-%20bookworm/44/"
+}

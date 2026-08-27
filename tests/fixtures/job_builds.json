@@ -1,0 +1,197 @@
+{
+    "_class": "hudson.model.FreeStyleProject",
+    "builds": [
+        {
+            "_class": "hudson.model.FreeStyleBuild",
+            "actions": [
+                {
+                    "_class": "hudson.model.CauseAction",
+                    "causes": [
+                        {
+                            "_class": "hudson.triggers.SCMTrigger$SCMTriggerCause",
+                            "shortDescription": "Started by an SCM change"
+                        },
+                        {
+                            "_class": "hudson.triggers.SCMTrigger$SCMTriggerCause",
+                            "shortDescription": "Started by an SCM change"
+                        }
+                    ]
+                },
+                {},
+                {
+                    "_class": "com.nirima.jenkins.plugins.docker.action.DockerBuildAction"
+                },
+                {
+                    "_class": "jenkins.metrics.impl.TimeInQueueAction"
+                },
+                {},
+                {},
+                {},
+                {
+                    "_class": "hudson.plugins.git.util.BuildData",
+                    "lastBuiltRevision": {
+                        "SHA1": "936546cccd98545aae9dcb94b2ba91a9225f6ba7",
+                        "branch": [
+                            {
+                                "SHA1": "936546cccd98545aae9dcb94b2ba91a9225f6ba7",
+                                "name": "origin/build_bookworm"
+                            }
+                        ]
+                    },
+                    "remoteUrls": [
+                        "git@gitlab.saltation.de:rust/sync-ldap-subtrees.git"
+                    ]
+                },
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {
+                    "_class": "org.jenkinsci.plugins.displayurlapi.actions.RunDisplayAction"
+                }
+            ],
+            "building": false,
+            "duration": 161496,
+            "number": 23,
+            "result": "SUCCESS",
+            "timestamp": 1787740367496,
+            "url": "https://jenkins.saltation.de/job/saltation___sync_ldap_subtrees___Debian_Rust_Package___bookworm___amd64/23/"
+        },
+        {
+            "_class": "hudson.model.FreeStyleBuild",
+            "actions": [
+                {
+                    "_class": "hudson.model.CauseAction",
+                    "causes": [
+                        {
+                            "_class": "hudson.triggers.SCMTrigger$SCMTriggerCause",
+                            "shortDescription": "Started by an SCM change"
+                        },
+                        {
+                            "_class": "hudson.triggers.SCMTrigger$SCMTriggerCause",
+                            "shortDescription": "Started by an SCM change"
+                        }
+                    ]
+                },
+                {},
+                {
+                    "_class": "com.nirima.jenkins.plugins.docker.action.DockerBuildAction"
+                },
+                {},
+                {
+                    "_class": "jenkins.metrics.impl.TimeInQueueAction"
+                },
+                {},
+                {},
+                {},
+                {
+                    "_class": "hudson.plugins.git.util.BuildData",
+                    "lastBuiltRevision": {
+                        "SHA1": "e363338ea615b333304f73f4f02e2d2bc990a4d6",
+                        "branch": [
+                            {
+                                "SHA1": "e363338ea615b333304f73f4f02e2d2bc990a4d6",
+                                "name": "origin/build_bookworm"
+                            }
+                        ]
+                    },
+                    "remoteUrls": [
+                        "git@gitlab.saltation.de:rust/sync-ldap-subtrees.git"
+                    ]
+                },
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {
+                    "_class": "org.jenkinsci.plugins.displayurlapi.actions.RunDisplayAction"
+                }
+            ],
+            "building": false,
+            "duration": 108539,
+            "number": 22,
+            "result": "SUCCESS",
+            "timestamp": 1787739645684,
+            "url": "https://jenkins.saltation.de/job/saltation___sync_ldap_subtrees___Debian_Rust_Package___bookworm___amd64/22/"
+        },
+        {
+            "_class": "hudson.model.FreeStyleBuild",
+            "actions": [
+                {
+                    "_class": "hudson.model.CauseAction",
+                    "causes": [
+                        {
+                            "_class": "hudson.triggers.SCMTrigger$SCMTriggerCause",
+                            "shortDescription": "Started by an SCM change"
+                        },
+                        {
+                            "_class": "hudson.triggers.SCMTrigger$SCMTriggerCause",
+                            "shortDescription": "Started by an SCM change"
+                        }
+                    ]
+                },
+                {},
+                {
+                    "_class": "com.nirima.jenkins.plugins.docker.action.DockerBuildAction"
+                },
+                {},
+                {
+                    "_class": "jenkins.metrics.impl.TimeInQueueAction"
+                },
+                {},
+                {},
+                {},
+                {
+                    "_class": "hudson.plugins.git.util.BuildData",
+                    "lastBuiltRevision": {
+                        "SHA1": "a2b37b3c6bfa145c51aed766d085a603cf869877",
+                        "branch": [
+                            {
+                                "SHA1": "a2b37b3c6bfa145c51aed766d085a603cf869877",
+                                "name": "origin/build_bookworm"
+                            }
+                        ]
+                    },
+                    "remoteUrls": [
+                        "git@gitlab.saltation.de:rust/sync-ldap-subtrees.git"
+                    ]
+                },
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {},
+                {
+                    "_class": "org.jenkinsci.plugins.displayurlapi.actions.RunDisplayAction"
+                }
+            ],
+            "building": false,
+            "duration": 154724,
+            "number": 21,
+            "result": "SUCCESS",
+            "timestamp": 1780931945217,
+            "url": "https://jenkins.saltation.de/job/saltation___sync_ldap_subtrees___Debian_Rust_Package___bookworm___amd64/21/"
+        }
+    ]
+}

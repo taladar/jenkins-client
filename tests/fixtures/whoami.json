@@ -1,0 +1,5 @@
+{
+    "_class": "hudson.security.WhoAmI",
+    "authenticated": true,
+    "name": "mhoermann"
+}

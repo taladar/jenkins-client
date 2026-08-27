@@ -8,3 +8,6 @@ bom.xml
 perf.data
 perf.data.old
 flamegraph.svg
+
+# instance config files may contain an API token
+*_instance.toml

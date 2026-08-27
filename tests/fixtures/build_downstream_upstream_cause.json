@@ -1,0 +1,41 @@
+{
+    "_class": "hudson.model.FreeStyleBuild",
+    "actions": [
+        {
+            "_class": "hudson.model.CauseAction",
+            "causes": [
+                {
+                    "_class": "hudson.model.Cause$UpstreamCause",
+                    "shortDescription": "Started by upstream project \"saltation___sync_ldap_subtrees___Debian_Rust_Package___bookworm___amd64\" build number 23",
+                    "upstreamBuild": 23,
+                    "upstreamProject": "saltation___sync_ldap_subtrees___Debian_Rust_Package___bookworm___amd64"
+                }
+            ]
+        },
+        {
+            "_class": "com.nirima.jenkins.plugins.docker.action.DockerBuildAction"
+        },
+        {
+            "_class": "jenkins.metrics.impl.TimeInQueueAction"
+        },
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {
+            "_class": "org.jenkinsci.plugins.displayurlapi.actions.RunDisplayAction"
+        }
+    ],
+    "building": false,
+    "duration": 5110,
+    "number": 22,
+    "result": "SUCCESS",
+    "timestamp": 1787740566031,
+    "url": "https://jenkins.saltation.de/job/saltation___sync_ldap_subtrees___Debian_Repo_Publish_Job___bookworm_sysadmin/22/"
+}
