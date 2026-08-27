@@ -41,14 +41,25 @@ fn instance_config_path() -> Result<Option<PathBuf>, Box<dyn Error>> {
     }
 }
 
+/// the user agent the test clients identify themselves with
+const TEST_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+
 /// build a blocking client for the configured instance, or `None` when no
 /// instance is configured and the test should skip
+///
+/// Building the reqwest client here rather than inside the library is the
+/// whole point of the TLS-agnostic design: the crate under test has no TLS
+/// backend of its own, the test build picks `rustls` via its dev-dependency.
 fn blocking_client() -> Result<Option<Jenkins>, Box<dyn Error>> {
     let Some(path) = instance_config_path()? else {
         tracing::warn!("{CONFIG_ENV_VAR} not set, skipping live test");
         return Ok(None);
     };
-    Ok(Some(Jenkins::from_config_file(&path)?))
+    let client = reqwest::blocking::ClientBuilder::new()
+        .user_agent(TEST_USER_AGENT)
+        .cookie_store(true)
+        .build()?;
+    Ok(Some(Jenkins::from_config_file(client, &path)?))
 }
 
 /// build an async client for the configured instance, or `None` when no
@@ -58,7 +69,11 @@ fn async_client() -> Result<Option<JenkinsAsync>, Box<dyn Error>> {
         tracing::warn!("{CONFIG_ENV_VAR} not set, skipping live test");
         return Ok(None);
     };
-    Ok(Some(JenkinsAsync::from_config_file(&path)?))
+    let client = reqwest::ClientBuilder::new()
+        .user_agent(TEST_USER_AGENT)
+        .cookie_store(true)
+        .build()?;
+    Ok(Some(JenkinsAsync::from_config_file(client, &path)?))
 }
 
 #[traced_test]

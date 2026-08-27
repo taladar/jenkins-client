@@ -14,15 +14,6 @@ pub enum Error {
     /// could not parse URL in config
     #[error("could not parse URL in config: {0}")]
     CouldNotParseUrlInConfig(url::ParseError),
-    /// could not build reqwest client from supplied information
-    #[error("could not build reqwest client from supplied information: {0}")]
-    CouldNotBuildReqwestClientFromSuppliedInformation(reqwest::Error),
-    /// could not read CA certificate file
-    #[error("could not read CA certificate file: {0}")]
-    CouldNotReadCACertFile(std::io::Error),
-    /// could not parse PEM CA certificate
-    #[error("could not parse PEM CA certificate: {0}")]
-    CouldNotParsePEMCACertificate(reqwest::Error),
     /// could not parse URL fragment
     #[error("could not parse URL fragment: {0}")]
     CouldNotParseUrlFragment(url::ParseError),

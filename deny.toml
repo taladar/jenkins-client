@@ -88,6 +88,8 @@ ignore = [
 # List of explicitly allowed licenses
 # See https://spdx.org/licenses/ for list of possible licenses
 # [possible values: any SPDX 3.11 short identifier (+ optional exception)].
+# The library itself pulls in no TLS stack at all; these extra licenses are
+# needed only by the rustls dev-dependency the live tests build against.
 allow = [
   "MIT",
   "Apache-2.0",

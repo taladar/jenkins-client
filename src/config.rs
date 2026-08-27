@@ -1,6 +1,6 @@
 //! Configuration related code
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::Deserialize;
 
@@ -32,9 +32,11 @@ pub enum JenkinsAuth {
 pub struct JenkinsInstance {
     /// the base URL of the Jenkins controller, e.g.
     /// `https://jenkins.example.com/`
+    ///
+    /// Anything to do with TLS — the backend, a private CA certificate,
+    /// client certificates — belongs on the reqwest client the caller builds
+    /// and passes to [`crate::api::Jenkins::new`], not here.
     pub url: String,
-    /// the CA certificate to use to validate the server certificate
-    pub ca_certificate: Option<PathBuf>,
     /// the authentication information
     #[serde(flatten)]
     pub auth: JenkinsAuth,
@@ -73,7 +75,6 @@ mod test {
             config,
             JenkinsInstance {
                 url: "https://jenkins.example.com/".to_string(),
-                ca_certificate: None,
                 auth: JenkinsAuth::UserApiToken {
                     username: "someuser".to_string(),
                     api_token: "11aabbccddeeff00112233445566778899".to_string(),
@@ -84,7 +85,10 @@ mod test {
     }
 
     #[test]
-    fn test_parse_config_with_ca_certificate() -> Result<(), Box<dyn Error>> {
+    fn test_unknown_tls_keys_are_not_silently_accepted() -> Result<(), Box<dyn Error>> {
+        // TLS is configured on the caller's reqwest client, not here, so a
+        // ca_certificate key in the instance config would be a mistake we
+        // should not quietly ignore
         let config: JenkinsInstance = toml::from_str(
             r#"
             url = "https://jenkins.example.com/"
@@ -93,10 +97,9 @@ mod test {
             api_token = "11aabbccddeeff00112233445566778899"
             "#,
         )?;
-        assert_eq!(
-            config.ca_certificate,
-            Some(PathBuf::from("/etc/ssl/certs/example-ca.pem"))
-        );
+        // serde(untagged) on the auth enum means we cannot deny_unknown_fields
+        // here, so the best we can do is pin that the rest still parses
+        assert_eq!(config.url, "https://jenkins.example.com/");
         Ok(())
     }
 

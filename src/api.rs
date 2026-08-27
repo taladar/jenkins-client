@@ -210,31 +210,6 @@ pub trait Endpoint {
 )]
 pub trait ReturnsJsonResponse {}
 
-/// the default headers (JSON `Accept`) sent with every request
-///
-/// Unlike the other API clients in this family we do not set a default
-/// `Content-Type`, because Jenkins build triggers are form-encoded rather than
-/// JSON and the endpoints that do send a body set the header themselves.
-fn default_headers() -> reqwest::header::HeaderMap {
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(
-        "Accept",
-        reqwest::header::HeaderValue::from_static("application/json"),
-    );
-    headers
-}
-
-/// read and parse the optional CA certificate configured for a [JenkinsInstance]
-fn ca_certificate(config: &JenkinsInstance) -> Result<Option<reqwest::Certificate>, crate::Error> {
-    let Some(path) = &config.ca_certificate else {
-        return Ok(None);
-    };
-    let content = fs_err::read(path).map_err(crate::Error::CouldNotReadCACertFile)?;
-    let certificate = reqwest::Certificate::from_pem(&content)
-        .map_err(crate::Error::CouldNotParsePEMCACertificate)?;
-    Ok(Some(certificate))
-}
-
 /// parse and normalise the base URL from a [JenkinsInstance]
 ///
 /// A trailing slash is appended when missing, because [`Url::join`] discards
@@ -379,41 +354,38 @@ const CRUMB_ENDPOINT: &str = "crumbIssuer/api/json";
 macro_rules! client_impl {
     (
         $client:ident,
-        $builder:ty,
+        $reqwest_client:ty,
         $sleep:expr,
         [$($async:tt)*],
         [$($await:tt)*]
     ) => {
         impl $client {
-            /// create a new client from a config that was either manually
-            /// created or previously loaded via
-            /// [`JenkinsInstance::from_config_file`]
+            /// create a new client from a caller-supplied reqwest client and
+            /// a config that was either manually created or previously loaded
+            /// via [`JenkinsInstance::from_config_file`]
+            ///
+            /// This crate takes no opinion on the TLS backend, so building the
+            /// reqwest client is the caller's job: add reqwest as your own
+            /// dependency, enable the TLS features you want there and pass the
+            /// resulting client in.
+            ///
+            /// Two settings on that client matter here:
+            ///
+            /// - Build it with `.cookie_store(true)` if you intend to trigger
+            ///   builds. Jenkins' `StrictCrumbIssuer` ties a CSRF crumb to the
+            ///   session it was issued for, so without a cookie jar every
+            ///   state-changing request gets a fresh session and the crumb is
+            ///   rejected. Read-only use does not need it.
+            /// - Set a `.user_agent(..)` so your traffic is identifiable in the
+            ///   controller's access log.
             ///
             /// # Errors
             ///
-            /// this fails if the URL in the configuration can not be parsed or
-            /// the CA certificate file mentioned in the configuration can not
-            /// be found or parsed
-            pub fn from_instance_config(config: &JenkinsInstance) -> Result<Self, crate::Error> {
-                let client_builder = <$builder>::new()
-                    .user_agent(concat!(
-                        env!("CARGO_PKG_NAME"),
-                        "/",
-                        env!("CARGO_PKG_VERSION")
-                    ))
-                    // Jenkins' StrictCrumbIssuer ties a crumb to the session
-                    // it was issued for, so the cookie jar is what makes a
-                    // cached crumb usable for a later request
-                    .cookie_store(true)
-                    .default_headers(default_headers());
-                let client_builder = if let Some(ca_certificate) = ca_certificate(config)? {
-                    client_builder.tls_certs_only([ca_certificate])
-                } else {
-                    client_builder
-                };
-                let client = client_builder
-                    .build()
-                    .map_err(crate::Error::CouldNotBuildReqwestClientFromSuppliedInformation)?;
+            /// this fails if the URL in the configuration can not be parsed
+            pub fn new(
+                client: $reqwest_client,
+                config: &JenkinsInstance,
+            ) -> Result<Self, crate::Error> {
                 Ok(Self {
                     client,
                     base_url: base_url_from_instance_config(config)?,
@@ -422,17 +394,21 @@ macro_rules! client_impl {
                 })
             }
 
-            /// create a new client from a TOML config file
+            /// create a new client from a caller-supplied reqwest client and a
+            /// TOML config file
+            ///
+            /// See [`Self::new`] for what the reqwest client has to provide.
             ///
             /// # Errors
             ///
             /// this fails if the configuration file can not be found or
-            /// parsed, the URL in the configuration can not be parsed or the
-            /// CA certificate file mentioned in the configuration can not be
-            /// found or parsed
-            pub fn from_config_file(path: &std::path::Path) -> Result<Self, crate::Error> {
+            /// parsed, or the URL in the configuration can not be parsed
+            pub fn from_config_file(
+                client: $reqwest_client,
+                path: &std::path::Path,
+            ) -> Result<Self, crate::Error> {
                 let config = JenkinsInstance::from_config_file(path)?;
-                Self::from_instance_config(&config)
+                Self::new(client, &config)
             }
 
             /// the base URL of the Jenkins controller this client talks to
@@ -457,7 +433,10 @@ macro_rules! client_impl {
                     .map_err(crate::Error::CouldNotParseUrlFragment)?;
                 parameters.add_to_url(&mut url);
                 tracing::debug!(%url, %method, "Calling Jenkins");
-                let req = self.client.request(method.clone(), url.clone());
+                let req = self
+                    .client
+                    .request(method.clone(), url.clone())
+                    .header(reqwest::header::ACCEPT, "application/json");
                 let req = match self.auth {
                     JenkinsAuth::UserApiToken {
                         ref username,
@@ -1051,7 +1030,7 @@ pub struct JenkinsAsync {
 
 client_impl!(
     JenkinsAsync,
-    reqwest::ClientBuilder,
+    reqwest::Client,
     |d: std::time::Duration| tokio::time::sleep(d),
     [async],
     [.await]
@@ -1059,7 +1038,7 @@ client_impl!(
 
 client_impl!(
     Jenkins,
-    reqwest::blocking::ClientBuilder,
+    reqwest::blocking::Client,
     |d: std::time::Duration| std::thread::sleep(d),
     [],
     []

@@ -20,7 +20,15 @@ derive_builder = "0.20.2"
 derive_more = { version = "2.1.1", features = ["debug", "display", "from_str"] }
 fs-err = "3.3.1"
 percent-encoding = "2.3.2"
-reqwest = { version = "0.13.4", features = ["blocking", "json", "cookies"] }
+# The TLS backend is deliberately left unconfigured: pulling in reqwest's
+# default features would force a stack on every consumer. Add reqwest as your
+# own dependency and enable the TLS features you want there; cargo unifies them
+# with this one. See the README for details.
+reqwest = { version = "0.13.4", default-features = false, features = [
+    "blocking",
+    "cookies",
+    "json",
+] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 serde_path_to_error = "0.1.20"
@@ -34,6 +42,13 @@ url = "2.5.8"
 [dev-dependencies]
 dotenvy = "0.15.7"
 pretty_assertions = { version = "1.4.1" }
+# the live tests need an actual TLS stack; this is the crate's own choice for
+# its test build only and imposes nothing on consumers
+reqwest = { version = "0.13.4", default-features = false, features = [
+    "charset",
+    "http2",
+    "rustls",
+] }
 tokio = { version = "1.53.1", features = ["macros", "net", "rt", "time"] }
 tracing-test = "0.2.6"
 

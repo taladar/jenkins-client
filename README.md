@@ -10,6 +10,40 @@ edits a job.
 Both a blocking (`Jenkins`) and an async (`JenkinsAsync`) client are provided
 and always compiled; there are no feature flags to choose between them.
 
+## TLS is your choice, not this crate's
+
+This crate depends on reqwest with `default-features = false` and enables no
+TLS backend at all, so it forces neither `rustls` nor `native-tls` on you — it
+does not even pull in a crypto provider. It compiles with no TLS stack present.
+
+The flip side is that **you** build the reqwest client and pass it in, which is
+also where you pick the TLS backend. Add reqwest as your own dependency, enable
+what you want, and cargo unifies those features with this crate's:
+
+```toml
+[dependencies]
+jenkins-api = "0.1"
+# rustls pulls in rustls-platform-verifier, so verification uses the system
+# trust store and picks up corporate CAs without an OpenSSL build dependency
+reqwest = { version = "0.13.4", default-features = false, features = [
+  "rustls",
+] }
+```
+
+Because you own the client, anything else TLS-related — a private CA
+certificate, a client certificate, a custom crypto provider — is configured
+there too, with reqwest's own API. There is deliberately no `ca_certificate`
+setting in this crate's config for that reason.
+
+Two client settings matter to this crate:
+
+- Build it with `.cookie_store(true)` **if you intend to trigger builds**.
+  Jenkins' `StrictCrumbIssuer` ties a CSRF crumb to the session it was issued
+  for, so without a cookie jar each request gets a fresh session and the crumb
+  is rejected. Read-only use does not need it.
+- Set a `.user_agent(..)` so your traffic is identifiable in the controller's
+  access log.
+
 ## What it can do
 
 | Area | Operations |
@@ -51,10 +85,19 @@ same job more than once.
 ```rust,no_run
 use jenkins_api::{Error, JenkinsAsync, JobName, Revision};
 
+/// you build the reqwest client, so you choose the TLS backend
+fn client() -> Result<reqwest::Client, reqwest::Error> {
+    reqwest::ClientBuilder::new()
+        .user_agent("my-tool/1.0")
+        // only needed if you trigger builds; see above
+        .cookie_store(true)
+        .build()
+}
+
 /// which jobs build this repository, and on which branches?
 async fn jobs_building(remote: &str) -> Result<(), Error> {
     let path = std::path::Path::new("jenkins_instance.toml");
-    let jenkins = JenkinsAsync::from_config_file(path)?;
+    let jenkins = JenkinsAsync::from_config_file(client()?, path)?;
     for job in jenkins.jobs_with_scm().await? {
         let Some(scm) = &job.scm else { continue };
         let builds_it = scm
@@ -71,7 +114,7 @@ async fn jobs_building(remote: &str) -> Result<(), Error> {
 /// did a specific commit build successfully?
 async fn build_for(name: &JobName, revision: &Revision) -> Result<(), Error> {
     let path = std::path::Path::new("jenkins_instance.toml");
-    let jenkins = JenkinsAsync::from_config_file(path)?;
+    let jenkins = JenkinsAsync::from_config_file(client()?, path)?;
     let found = jenkins
         .find_build_for_revision(name, revision, None)
         .await?;
@@ -88,8 +131,6 @@ The client is built from a TOML file:
 
 ```toml
 url = "https://jenkins.example.com/"
-# optional, for a controller behind a private CA
-ca_certificate = "/etc/ssl/certs/example-ca.pem"
 username = "someuser"
 api_token = "the API token from the user's Jenkins account settings"
 ```
@@ -102,10 +143,11 @@ url = "https://jenkins.example.com/"
 anonymous = true
 ```
 
+Note there is no TLS-related key here; see "TLS is your choice" above.
+
 Read-only `GET` requests are sent straight through. State-changing requests
 carry a CSRF crumb, which is fetched lazily, cached, shared between clones of
-the client and refreshed once if Jenkins rejects it — which is why the client
-keeps a cookie jar, since `StrictCrumbIssuer` ties a crumb to its session.
+the client and refreshed once if Jenkins rejects it.
 
 ## Tests
 
