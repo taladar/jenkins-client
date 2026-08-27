@@ -1,5 +1,5 @@
 [package]
-name = "jenkins-api"
+name = "jenkins-client"
 description = "Rust client library for the Jenkins REST API"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
@@ -9,7 +9,10 @@ edition = "2024"
 resolver = "3"
 rust-version = "1.94.0"
 
-publish = false
+publish = true
+repository = "https://github.com/taladar/jenkins-client"
+keywords = ["jenkins", "ci", "api", "client"]
+categories = ["api-bindings", "development-tools"]
 
 exclude = [".env", "tarpaulin-report.html", "tarpaulin-report.json"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

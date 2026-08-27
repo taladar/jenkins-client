@@ -11,7 +11,7 @@ header = """# Changelog
 # See https://keats.github.io/tera/docs/#introduction
 body = """
 {% if version %}\
-## {{ version | trim_start_matches(pat="jenkins_api_") }} - {{ timestamp | date(format="%Y-%m-%d %H:%M:%SZ") }}
+## {{ version | trim_start_matches(pat="jenkins_client_") }} - {{ timestamp | date(format="%Y-%m-%d %H:%M:%SZ") }}
 {% else %}\
     ## Unreleased changes
 {% endif %}\
@@ -40,7 +40,7 @@ postprocessors = [
 # output = "test.md"
 
 [git]
-tag_pattern = "^jenkins_api_[0-9.]*$"
+tag_pattern = "^jenkins_client_[0-9.]*$"
 # Parse commits according to the conventional commits specification.
 # See https://www.conventionalcommits.org
 conventional_commits = true

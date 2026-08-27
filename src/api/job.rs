@@ -20,8 +20,8 @@ use crate::types::JobName;
 /// parse the job naming convention.
 ///
 /// ```
-/// use jenkins_api::api::job::ListJobs;
-/// # fn main() -> Result<(), jenkins_api::Error> {
+/// use jenkins_client::api::job::ListJobs;
+/// # fn main() -> Result<(), jenkins_client::Error> {
 /// let endpoint = ListJobs::builder().with_scm(true).build()?;
 /// # Ok(()) }
 /// ```
@@ -68,8 +68,8 @@ impl Endpoint for ListJobs {
 /// The endpoint for a single job
 ///
 /// ```
-/// use jenkins_api::api::job::GetJob;
-/// # fn main() -> Result<(), jenkins_api::Error> {
+/// use jenkins_client::api::job::GetJob;
+/// # fn main() -> Result<(), jenkins_client::Error> {
 /// let endpoint = GetJob::builder()
 ///     .name("saltation - redmine_api - Check Only Rust Package - bookworm")
 ///     .build()?;
@@ -122,8 +122,8 @@ downstreamProjects[name],upstreamProjects[name]"
 /// asking for more builds costs one request either way.
 ///
 /// ```
-/// use jenkins_api::api::job::ListBuilds;
-/// # fn main() -> Result<(), jenkins_api::Error> {
+/// use jenkins_client::api::job::ListBuilds;
+/// # fn main() -> Result<(), jenkins_client::Error> {
 /// let endpoint = ListBuilds::builder()
 ///     .name("saltation___sync_ldap_subtrees___Debian_Rust_Package___bookworm___amd64")
 ///     .limit(30_u64)
@@ -186,8 +186,8 @@ impl Endpoint for ListBuilds {
 /// job more than once.
 ///
 /// ```
-/// use jenkins_api::api::job::TriggerBuild;
-/// # fn main() -> Result<(), jenkins_api::Error> {
+/// use jenkins_client::api::job::TriggerBuild;
+/// # fn main() -> Result<(), jenkins_client::Error> {
 /// let endpoint = TriggerBuild::builder()
 ///     .name("some-job")
 ///     .parameters(vec![("BRANCH".to_owned(), "master".to_owned())])

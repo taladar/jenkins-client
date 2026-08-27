@@ -1,4 +1,4 @@
-# jenkins-api
+# jenkins-client
 
 Rust client library for the Jenkins REST API.
 
@@ -22,7 +22,7 @@ what you want, and cargo unifies those features with this crate's:
 
 ```toml
 [dependencies]
-jenkins-api = "0.1"
+jenkins-client = "0.1"
 # rustls pulls in rustls-platform-verifier, so verification uses the system
 # trust store and picks up corporate CAs without an OpenSSL build dependency
 reqwest = { version = "0.13.4", default-features = false, features = [
@@ -83,7 +83,7 @@ same job more than once.
 ## Usage
 
 ```rust,no_run
-use jenkins_api::{Error, JenkinsAsync, JobName, Revision};
+use jenkins_client::{Error, JenkinsAsync, JobName, Revision};
 
 /// you build the reqwest client, so you choose the TLS backend
 fn client() -> Result<reqwest::Client, reqwest::Error> {

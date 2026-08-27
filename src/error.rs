@@ -2,7 +2,7 @@
 
 use thiserror::Error;
 
-/// Error type for jenkins_api
+/// Error type for jenkins_client
 #[derive(Debug, Error)]
 pub enum Error {
     /// could not read config file
