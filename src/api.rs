@@ -243,18 +243,78 @@ fn log_response_body(response_body: &[u8]) {
     }
 }
 
-/// turn a non-2xx response status and body into [`crate::Error::ApiError`]
+/// the longest error message we carry through from a response body
 ///
-/// Jenkins does not use a consistent machine-readable error body — it answers
-/// with an HTML error page, a bare status line or, for a rejected crumb, a
-/// plain text explanation — so the raw body is carried through as the message.
+/// Jenkins error bodies are not bounded in any useful way, and an unbounded
+/// message ends up printed at the user by every consumer of this crate.
+const MAX_ERROR_MESSAGE_LEN: usize = 512;
+
+/// summarise a non-2xx response body into something worth showing a user
+///
+/// Jenkins does not use a consistent machine-readable error body: it answers
+/// with a full HTML error page for a 404, a bare status line for some errors
+/// and a plain text explanation for a rejected crumb. Carrying an HTML page
+/// through verbatim buries the useful part in kilobytes of markup, so an HTML
+/// body is reduced to its `<title>` (which is where Jenkins puts the actual
+/// message) and anything else is trimmed and capped.
+fn error_message(status: reqwest::StatusCode, response_body: &[u8]) -> String {
+    /// the fallback used when the body carries nothing worth showing
+    fn reason(status: reqwest::StatusCode) -> String {
+        status
+            .canonical_reason()
+            .unwrap_or("unknown error")
+            .to_owned()
+    }
+
+    if response_body.is_empty() {
+        return reason(status);
+    }
+    let body = String::from_utf8_lossy(response_body);
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return reason(status);
+    }
+    let looks_like_html = trimmed.starts_with('<')
+        || trimmed
+            .get(..256)
+            .unwrap_or(trimmed)
+            .to_lowercase()
+            .contains("<html");
+    if looks_like_html {
+        let title = extract_html_title(trimmed);
+        return title.unwrap_or_else(|| reason(status));
+    }
+    let mut message: String = trimmed.chars().take(MAX_ERROR_MESSAGE_LEN).collect();
+    if trimmed.chars().count() > MAX_ERROR_MESSAGE_LEN {
+        message.push('…');
+    }
+    message
+}
+
+/// pull the text of the first `<title>` element out of an HTML document
+fn extract_html_title(html: &str) -> Option<String> {
+    let lower = html.to_lowercase();
+    let open = lower.find("<title")?;
+    let after_open = lower
+        .get(open..)?
+        .find('>')?
+        .checked_add(open)?
+        .checked_add(1)?;
+    let rest = html.get(after_open..)?;
+    let close = rest.to_lowercase().find("</title>")?;
+    let title = rest.get(..close)?.trim();
+    if title.is_empty() {
+        return None;
+    }
+    Some(title.chars().take(MAX_ERROR_MESSAGE_LEN).collect())
+}
+
+/// turn a non-2xx response status and body into [`crate::Error::ApiError`]
 fn error_response(status: reqwest::StatusCode, response_body: &[u8]) -> crate::Error {
-    let message = if response_body.is_empty() {
-        status.canonical_reason().unwrap_or("").to_owned()
-    } else {
-        String::from_utf8_lossy(response_body).into_owned()
-    };
-    crate::Error::ApiError { status, message }
+    crate::Error::ApiError {
+        status,
+        message: error_message(status, response_body),
+    }
 }
 
 /// whether a failed response looks like Jenkins rejecting our CSRF crumb
@@ -1071,6 +1131,66 @@ mod test {
     fn test_encode_path_segment_escapes_slashes() {
         // a slash inside a job name must not turn into a path separator
         assert_eq!(encode_path_segment("some/job"), "some%2Fjob");
+    }
+
+    #[test]
+    fn test_error_message_reduces_an_html_page_to_its_title() {
+        // this is the shape Jenkins returns for a 404 on an unknown job
+        let html = b"<html><head><meta http-equiv=\'refresh\'><title>Error 404 Not Found</title>\
+</head><body><h2>HTTP ERROR 404 Not Found</h2><table><tr><th>URI:</th></tr></table>\
+<footer>lots and lots of markup</footer></body></html>";
+        let message = error_message(reqwest::StatusCode::NOT_FOUND, html);
+        assert_eq!(message, "Error 404 Not Found");
+    }
+
+    #[test]
+    fn test_error_message_falls_back_to_the_status_reason() {
+        assert_eq!(
+            error_message(reqwest::StatusCode::NOT_FOUND, b""),
+            "Not Found"
+        );
+        assert_eq!(
+            error_message(reqwest::StatusCode::NOT_FOUND, b"   \n  "),
+            "Not Found"
+        );
+        // HTML with no title has nothing useful to show either
+        assert_eq!(
+            error_message(
+                reqwest::StatusCode::NOT_FOUND,
+                b"<html><body>x</body></html>"
+            ),
+            "Not Found"
+        );
+    }
+
+    #[test]
+    fn test_error_message_keeps_a_plain_text_body() {
+        // a rejected crumb is plain text and is exactly the case where the
+        // body is the useful part
+        let message = error_message(
+            reqwest::StatusCode::FORBIDDEN,
+            b"No valid crumb was included in the request",
+        );
+        assert_eq!(message, "No valid crumb was included in the request");
+    }
+
+    #[test]
+    fn test_error_message_caps_a_huge_plain_text_body() {
+        let huge = "x".repeat(5000);
+        let message = error_message(reqwest::StatusCode::BAD_GATEWAY, huge.as_bytes());
+        assert_eq!(message.chars().count(), MAX_ERROR_MESSAGE_LEN + 1);
+        assert!(message.ends_with('…'));
+    }
+
+    #[test]
+    fn test_crumb_rejection_still_detected_after_summarising() {
+        // the crumb check runs on the summarised message, so the two have to
+        // keep working together
+        let error = error_response(
+            reqwest::StatusCode::FORBIDDEN,
+            b"No valid crumb was included in the request",
+        );
+        assert!(is_crumb_rejection(&error));
     }
 
     #[test]
