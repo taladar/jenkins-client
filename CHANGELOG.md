@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 - 2026-11-18 15:18:59Z
+
+### 🚀 Features
+
+- *(job)* [**breaking**] Read job triggers from config.xml
+
 ## 0.2.1 - 2026-11-16 15:17:13Z
 
 ### ⚙️ Miscellaneous Tasks
