@@ -9,6 +9,7 @@ pub mod config;
 pub mod error;
 #[cfg(test)]
 mod fixture_tests;
+pub mod job_config;
 #[cfg(test)]
 mod live_tests;
 pub mod types;
@@ -16,6 +17,7 @@ pub mod types;
 pub use api::{Endpoint, Jenkins, JenkinsAsync, ParamValue, QueryParams, ReturnsJsonResponse};
 pub use config::{JenkinsAuth, JenkinsInstance};
 pub use error::Error;
+pub use job_config::{JobConfig, JobTrigger};
 pub use types::{
     Build, BuildAction, BuildNumber, BuildResult, BuildsWrapper, Cause, Crumb, DurationMillis, Job,
     JobName, JobsWrapper, QueueItem, QueueItemId, QueueItemsWrapper, Revision, Scm, Timestamp,

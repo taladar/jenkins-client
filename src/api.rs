@@ -30,10 +30,11 @@ use serde::de::DeserializeOwned;
 use url::Url;
 
 use crate::api::build::{ConsoleText, GetBuild, GetLastBuild};
-use crate::api::job::{GetJob, ListBuilds, ListJobs, TriggerBuild};
+use crate::api::job::{GetJob, GetJobConfig, ListBuilds, ListJobs, TriggerBuild};
 use crate::api::queue::{GetQueueItem, ListQueue, WhoAmI as WhoAmIEndpoint};
 use crate::api::view::{GetView, ListViews};
 use crate::config::{JenkinsAuth, JenkinsInstance};
+use crate::job_config::JobConfig;
 use crate::types::{
     Build, BuildNumber, BuildsWrapper, Crumb, Job, JobName, JobsWrapper, QueueItem, QueueItemId,
     QueueItemsWrapper, Revision, View, ViewName, ViewsWrapper, WhoAmI,
@@ -871,6 +872,35 @@ macro_rules! client_impl {
             pub $($async)* fn job(&self, name: &JobName) -> Result<Job, crate::Error> {
                 let endpoint = GetJob::builder().name(name.clone()).build()?;
                 self.json_response_body(&endpoint) $($await)*
+            }
+
+            /// fetch a job's raw `config.xml`
+            ///
+            /// Prefer [`Self::job_config`] unless you need a part of the
+            /// document it does not parse.
+            ///
+            /// # Errors
+            ///
+            /// this can return an error if the web request fails or Jenkins
+            /// returns an error response, in particular a 403 if the
+            /// credentials lack the `Job/ExtendedRead` permission
+            pub $($async)* fn job_config_xml(&self, name: &JobName) -> Result<String, crate::Error> {
+                let endpoint = GetJobConfig::builder().name(name.clone()).build()?;
+                self.text_response_body(&endpoint) $($await)*
+            }
+
+            /// fetch and parse a job's `config.xml`, most usefully for its
+            /// triggers, which the JSON API does not report
+            ///
+            /// # Errors
+            ///
+            /// this can return an error if the web request fails or Jenkins
+            /// returns an error response, in particular a 403 if the
+            /// credentials lack the `Job/ExtendedRead` permission, or if the
+            /// document is not well-formed XML
+            pub $($async)* fn job_config(&self, name: &JobName) -> Result<JobConfig, crate::Error> {
+                let xml = self.job_config_xml(name) $($await)*?;
+                JobConfig::parse(&xml)
             }
 
             /// the jobs this job triggers when it succeeds

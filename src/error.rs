@@ -23,6 +23,9 @@ pub enum Error {
     /// An error occurred when serializing/deserializing JSON
     #[error("error in json serialization/deserialization: {0}")]
     SerdeJsonError(#[from] serde_path_to_error::Error<serde_json::Error>),
+    /// a job's `config.xml` is not well-formed XML
+    #[error("could not parse job config XML: {0}")]
+    XmlParse(#[from] roxmltree::Error),
     /// Response body was empty so we can not deserialize it as JSON
     #[error("empty response body with status: {0}")]
     EmptyResponseBody(reqwest::StatusCode),

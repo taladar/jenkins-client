@@ -12,6 +12,7 @@ use std::error::Error;
 use tracing_test::traced_test;
 
 use crate::api::parse_json_response_body;
+use crate::job_config::{JobConfig, JobTrigger};
 use crate::types::{
     Build, BuildNumber, BuildResult, BuildsWrapper, Crumb, JobName, QueueItem, QueueItemsWrapper,
     Revision, WhoAmI,
@@ -135,5 +136,87 @@ fn test_parse_whoami() -> Result<(), Box<dyn Error>> {
     let who: WhoAmI = parse_json_response_body(include_bytes!("../tests/fixtures/whoami.json"))?;
     assert_eq!(who.authenticated, Some(true));
     assert!(who.name.is_some());
+    Ok(())
+}
+
+#[traced_test]
+#[test]
+fn test_job_config_of_scm_polled_job_starts_on_push() -> Result<(), Box<dyn Error>> {
+    let config = JobConfig::parse(include_str!("../tests/fixtures/job_config_scm_poll.xml"))?;
+    assert_eq!(config.kind, "project");
+    assert!(!config.is_pipeline());
+    assert!(!config.disabled);
+    assert_eq!(
+        config.triggers,
+        vec![JobTrigger::ScmPoll {
+            schedule: Some("H/15 * * * *".to_owned()),
+            ignore_post_commit_hooks: false,
+        }]
+    );
+    assert!(
+        config.starts_on_push(),
+        "a push notification schedules a poll of this job"
+    );
+    Ok(())
+}
+
+#[traced_test]
+#[test]
+fn test_job_config_of_upstream_triggered_job_does_not_start_on_push() -> Result<(), Box<dyn Error>>
+{
+    // bound to the same repository and branch as the polled job, yet a push
+    // never starts it: only its upstream jobs do
+    let config = JobConfig::parse(include_str!("../tests/fixtures/job_config_upstream.xml"))?;
+    assert_eq!(
+        config.triggers,
+        vec![JobTrigger::Upstream {
+            upstream_projects: vec![
+                JobName::from("base_image_pull"),
+                JobName::from("other_base_image"),
+            ],
+            threshold: Some(BuildResult::Success),
+        }]
+    );
+    assert_eq!(
+        config.upstream_projects().collect::<Vec<_>>(),
+        vec![
+            &JobName::from("base_image_pull"),
+            &JobName::from("other_base_image")
+        ]
+    );
+    assert!(
+        !config.starts_on_push(),
+        "only upstream builds start this job"
+    );
+    Ok(())
+}
+
+#[traced_test]
+#[test]
+fn test_job_config_of_pipeline_reads_property_triggers() -> Result<(), Box<dyn Error>> {
+    // a pipeline keeps its triggers inside PipelineTriggersJobProperty and has
+    // an empty top-level <triggers/>, which must not hide them
+    let config = JobConfig::parse(include_str!(
+        "../tests/fixtures/job_config_pipeline_gitlab.xml"
+    ))?;
+    assert!(config.is_pipeline());
+    assert_eq!(
+        config.triggers,
+        vec![
+            JobTrigger::GitLab {
+                on_push: false,
+                on_merge_request: true,
+                on_note: true,
+            },
+            JobTrigger::Timer {
+                schedule: Some("H 3 * * 1".to_owned()),
+            },
+        ]
+    );
+    assert_eq!(config.schedules().collect::<Vec<_>>(), vec!["H 3 * * 1"]);
+    assert!(
+        !config.starts_on_push(),
+        "merge request, note and timer events are not pushes"
+    );
     Ok(())
 }

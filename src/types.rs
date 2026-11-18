@@ -200,6 +200,23 @@ impl BuildResult {
     pub const fn is_success(self) -> bool {
         matches!(self, Self::Success)
     }
+
+    /// parse the name Jenkins uses for a result, e.g. `SUCCESS`
+    ///
+    /// The JSON API deserializes results through serde; this is for the
+    /// places that carry the name as plain text, such as the threshold of an
+    /// upstream trigger in a job's `config.xml`.
+    #[must_use]
+    pub fn from_jenkins_name(name: &str) -> Option<Self> {
+        match name {
+            "SUCCESS" => Some(Self::Success),
+            "UNSTABLE" => Some(Self::Unstable),
+            "FAILURE" => Some(Self::Failure),
+            "NOT_BUILT" => Some(Self::NotBuilt),
+            "ABORTED" => Some(Self::Aborted),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for BuildResult {

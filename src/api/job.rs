@@ -115,6 +115,48 @@ downstreamProjects[name],upstreamProjects[name]"
     }
 }
 
+/// The endpoint returning a job's `config.xml`
+///
+/// This is the only place Jenkins reports a job's triggers; the JSON API
+/// leaves them out. The response is XML rather than JSON, so use it with
+/// `text_response_body` and parse it with
+/// [`crate::job_config::JobConfig::parse`]. Reading it needs the
+/// `Job/ExtendedRead` permission, which plain `Job/Read` does not include.
+///
+/// ```
+/// use jenkins_client::api::job::GetJobConfig;
+/// # fn main() -> Result<(), jenkins_client::Error> {
+/// let endpoint = GetJobConfig::builder()
+///     .name("saltation - redmine_api - Check Only Rust Package - bookworm")
+///     .build()?;
+/// # Ok(()) }
+/// ```
+#[derive(Debug, Clone, Builder)]
+#[builder(setter(strip_option), build_fn(error = "crate::Error"))]
+pub struct GetJobConfig {
+    /// the name of the job
+    #[builder(setter(into))]
+    name: JobName,
+}
+
+impl GetJobConfig {
+    /// Create a builder for the endpoint.
+    #[must_use]
+    pub fn builder() -> GetJobConfigBuilder {
+        GetJobConfigBuilder::default()
+    }
+}
+
+impl Endpoint for GetJobConfig {
+    fn method(&self) -> Method {
+        Method::GET
+    }
+
+    fn endpoint(&self) -> Cow<'static, str> {
+        format!("job/{}/config.xml", encode_path_segment(&self.name.0)).into()
+    }
+}
+
 /// The endpoint listing the recent builds of a job
 ///
 /// Jenkins returns the builds newest first. `limit` maps onto the `tree`
@@ -281,6 +323,19 @@ mod test {
             endpoint.endpoint(),
             "job/saltation%20-%20redmine_api%20-%20Check%20Only%20Rust%20Package%20-%20bookworm/api/json"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_job_config_endpoint_is_percent_encoded() -> Result<(), Box<dyn Error>> {
+        let endpoint = GetJobConfig::builder()
+            .name("Jenkins - Docker Container Update")
+            .build()?;
+        assert_eq!(
+            endpoint.endpoint(),
+            "job/Jenkins%20-%20Docker%20Container%20Update/config.xml"
+        );
+        assert_eq!(endpoint.method(), Method::GET);
         Ok(())
     }
 

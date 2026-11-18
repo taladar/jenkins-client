@@ -237,3 +237,32 @@ async fn test_find_build_for_revision_async() -> Result<(), Box<dyn Error>> {
     assert_eq!(found.number, with_revision.number);
     Ok(())
 }
+
+#[traced_test]
+#[tokio::test]
+#[ignore = "live test against a Jenkins controller, run with `cargo test -- --ignored` after setting JENKINS_TEST_INSTANCE_CONFIG"]
+async fn test_job_config_of_a_git_bound_job_parses_async() -> Result<(), Box<dyn Error>> {
+    let Some(jenkins) = async_client()? else {
+        return Ok(());
+    };
+    let jobs = jenkins.jobs_with_scm().await?;
+    let Some(name) = jobs
+        .iter()
+        .filter(|job| {
+            job.scm
+                .as_ref()
+                .is_some_and(|scm| scm.user_remote_configs.iter().any(|rc| rc.url.is_some()))
+        })
+        .find_map(|job| job.name.clone())
+    else {
+        tracing::warn!("no git-bound job on the controller, nothing to parse");
+        return Ok(());
+    };
+    let config = jenkins.job_config(&name).await?;
+    assert!(
+        !config.kind.is_empty(),
+        "the root element of {name}'s config.xml names its kind"
+    );
+    tracing::info!("{name}: {config:?}");
+    Ok(())
+}

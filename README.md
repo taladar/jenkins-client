@@ -49,6 +49,7 @@ Two client settings matter to this crate:
 | Area | Operations |
 |---|---|
 | Discovery | `jobs`, `jobs_with_scm`, `job`, `downstream_projects` |
+| Job configuration | `job_config`, `job_config_xml` |
 | Views | `views`, `view`, `resolve_view` |
 | Build results | `builds`, `build`, `last_build`, `console_text` |
 | Correlation | `find_build_for_revision`, `find_build_for_upstream` |
@@ -85,6 +86,14 @@ kinds of job:
 remote URLs and branches in a single request. Matching a repository against
 those remote URLs is far more reliable than trying to parse the job naming
 convention, which tends not to be one.
+
+A matching remote and branch only says that a job *checks out* the repository,
+not that a change to it *starts* the job: a nightly job or one started by an
+upstream job reports the same SCM. The JSON API does not report triggers at
+all, so `job_config` reads them from the job's `config.xml` and returns them
+as a typed `JobConfig` (`JobTrigger::ScmPoll`, `Timer`, `Upstream`, `GitLab`,
+`GitHubPush`, or `Other` with the class name), whose `starts_on_push` answers
+that question. Reading `config.xml` needs the `Job/ExtendedRead` permission.
 
 ## What it deliberately does not do
 
