@@ -19,7 +19,8 @@ pub use config::{JenkinsAuth, JenkinsInstance};
 pub use error::Error;
 pub use job_config::{JobConfig, JobTrigger};
 pub use types::{
-    Build, BuildAction, BuildNumber, BuildResult, BuildsWrapper, Cause, Crumb, DurationMillis, Job,
-    JobName, JobsWrapper, QueueItem, QueueItemId, QueueItemsWrapper, Revision, Scm, Timestamp,
-    View, ViewName,
+    Build, BuildAction, BuildNumber, BuildResult, BuildsWrapper, Cause, Computer, ConsoleChunk,
+    ConsoleFilter, Crumb, DurationMillis, Executor, ExecutorRun, Job, JobName, JobsWrapper,
+    QueueItem, QueueItemId, QueueItemsWrapper, Revision, RunningBuild, Scm, Timestamp, View,
+    ViewName,
 };

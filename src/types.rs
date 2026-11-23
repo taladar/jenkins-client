@@ -515,6 +515,222 @@ pub struct QueueItem {
     pub task: Option<QueueTask>,
 }
 
+/// what an executor is currently running
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct ExecutorRun {
+    /// the build number, absent for the placeholder a Pipeline `node` step
+    /// occupies an executor with
+    #[serde(default)]
+    pub number: Option<BuildNumber>,
+    /// the absolute URL of the build in the Jenkins web UI
+    #[serde(default)]
+    pub url: Option<String>,
+    /// when the build started
+    #[serde(default)]
+    pub timestamp: Option<Timestamp>,
+}
+
+/// one executor slot of a [Computer]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Executor {
+    /// what the executor is running, or `None` while it is idle
+    #[serde(default)]
+    pub current_executable: Option<ExecutorRun>,
+}
+
+/// the Jenkins controller or one of its agents
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Computer {
+    /// the name of the node
+    #[serde(default)]
+    pub display_name: Option<String>,
+    /// the node's regular executors
+    #[serde(default)]
+    pub executors: Vec<Executor>,
+    /// the flyweight executors Pipeline builds run on
+    #[serde(default)]
+    pub one_off_executors: Vec<Executor>,
+}
+
+/// wrapper for the `computer` array of the computer list response
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct ComputersWrapper<T> {
+    /// the computers
+    #[serde(default = "Vec::new")]
+    pub computer: Vec<T>,
+}
+
+/// a build that is currently executing somewhere on the controller
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunningBuild {
+    /// the job the build belongs to, with folders separated by `/`
+    pub job: JobName,
+    /// the build number within its job
+    pub number: BuildNumber,
+    /// the absolute URL of the build in the Jenkins web UI
+    pub url: String,
+    /// when the build started
+    pub timestamp: Option<Timestamp>,
+    /// the node the build is running on
+    pub node: Option<String>,
+}
+
+/// extract the job name from a build URL such as
+/// `https://jenkins.example.com/job/some%20job/44/`
+///
+/// Only the path is considered, and each `job` segment consumes the segment
+/// after it, so a job that is itself called `job` is handled correctly.
+fn job_name_from_build_url(raw: &str) -> Option<JobName> {
+    let url = url::Url::parse(raw).ok()?;
+    let mut segments = url.path_segments()?;
+    let mut names = Vec::new();
+    while let Some(segment) = segments.next() {
+        if segment == "job" {
+            let name = segments.next()?;
+            names.push(
+                percent_encoding::percent_decode_str(name)
+                    .decode_utf8()
+                    .ok()?
+                    .into_owned(),
+            );
+        }
+    }
+    if names.is_empty() {
+        None
+    } else {
+        Some(JobName(names.join("/")))
+    }
+}
+
+/// flatten the executors of all computers into the builds they are running
+///
+/// A Pipeline build can occupy several executors at once, so builds are
+/// deduplicated by URL. The flyweight executors are looked at last because the
+/// entries on regular executors say where the work is actually happening. The
+/// result is sorted oldest first.
+#[must_use]
+pub fn running_builds(computers: &[Computer]) -> Vec<RunningBuild> {
+    let regular = computers
+        .iter()
+        .flat_map(|computer| computer.executors.iter().map(move |e| (computer, e)));
+    let one_off = computers.iter().flat_map(|computer| {
+        computer
+            .one_off_executors
+            .iter()
+            .map(move |e| (computer, e))
+    });
+    let mut seen = std::collections::BTreeSet::new();
+    let mut builds = Vec::new();
+    for (computer, executor) in regular.chain(one_off) {
+        let Some(run) = executor.current_executable.as_ref() else {
+            continue;
+        };
+        let (Some(number), Some(url)) = (run.number, run.url.as_ref()) else {
+            continue;
+        };
+        let Some(job) = job_name_from_build_url(url) else {
+            continue;
+        };
+        if seen.insert(url.clone()) {
+            builds.push(RunningBuild {
+                job,
+                number,
+                url: url.clone(),
+                timestamp: run.timestamp,
+                node: computer.display_name.clone(),
+            });
+        }
+    }
+    builds.sort_by(|a, b| (a.timestamp, &a.job, a.number).cmp(&(b.timestamp, &b.job, b.number)));
+    builds
+}
+
+/// one chunk of a build's console log, read from a byte offset
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsoleChunk {
+    /// the raw log bytes, which can end in the middle of a UTF-8 character
+    pub data: Vec<u8>,
+    /// the offset to request the next chunk from
+    pub next_start: u64,
+    /// whether the log can still grow
+    pub more_data: bool,
+}
+
+/// the bytes that open a serialized Jenkins `ConsoleNote`
+const CONSOLE_NOTE_PREAMBLE: &[u8] = b"\x1b[8mha:";
+
+/// the bytes that close a serialized Jenkins `ConsoleNote`
+const CONSOLE_NOTE_POSTAMBLE: &[u8] = b"\x1b[0m";
+
+/// turns raw [`ConsoleChunk`] data into what the `consoleText` endpoint shows
+///
+/// The progressive log endpoint returns the stored log, which contains
+/// serialized `ConsoleNote` annotations and CRLF line endings. Either can be
+/// split across two chunks, so this holds back an incomplete sequence until
+/// the next chunk arrives. Call [`Self::finish`] after the last chunk.
+#[derive(Debug, Clone, Default)]
+pub struct ConsoleFilter {
+    /// the start of a sequence that is not complete yet
+    pending: Vec<u8>,
+}
+
+impl ConsoleFilter {
+    /// filter the next chunk, returning the bytes that are ready to show
+    pub fn push(&mut self, data: &[u8]) -> Vec<u8> {
+        let mut buffer = std::mem::take(&mut self.pending);
+        buffer.extend_from_slice(data);
+        let mut out = Vec::with_capacity(buffer.len());
+        let mut rest = buffer.as_slice();
+        while let Some((&byte, tail)) = rest.split_first() {
+            match byte {
+                b'\r' if tail.is_empty() => {
+                    self.pending = rest.to_vec();
+                    return out;
+                }
+                b'\r' => {
+                    if tail.first() != Some(&b'\n') {
+                        out.push(byte);
+                    }
+                    rest = tail;
+                }
+                0x1b => {
+                    if let Some(note) = rest.strip_prefix(CONSOLE_NOTE_PREAMBLE) {
+                        let after_note = note
+                            .windows(CONSOLE_NOTE_POSTAMBLE.len())
+                            .position(|window| window == CONSOLE_NOTE_POSTAMBLE)
+                            .and_then(|end| note.get(end..))
+                            .and_then(|from_end| from_end.strip_prefix(CONSOLE_NOTE_POSTAMBLE));
+                        let Some(after_note) = after_note else {
+                            self.pending = rest.to_vec();
+                            return out;
+                        };
+                        rest = after_note;
+                    } else if CONSOLE_NOTE_PREAMBLE.starts_with(rest) {
+                        self.pending = rest.to_vec();
+                        return out;
+                    } else {
+                        out.push(byte);
+                        rest = tail;
+                    }
+                }
+                _ => {
+                    out.push(byte);
+                    rest = tail;
+                }
+            }
+        }
+        out
+    }
+
+    /// return whatever was held back, unchanged, once the log has ended
+    #[must_use]
+    pub fn finish(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.pending)
+    }
+}
+
 /// the CSRF crumb Jenkins requires for state-changing requests
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -663,6 +879,101 @@ mod test {
     use super::*;
     use pretty_assertions::assert_eq;
     use std::error::Error;
+
+    #[test]
+    fn test_console_filter_at_every_split_point() {
+        let raw: &[u8] =
+            b"by \x1b[8mha:AAAA+/=\x1b[0muser\r\nnext\rbar \x1b[31mred\x1b[0m\r\nend\r";
+        let expected: &[u8] = b"by user\nnext\rbar \x1b[31mred\x1b[0m\nend\r";
+        for split in 0..=raw.len() {
+            let (first, second) = raw.split_at(split);
+            let mut filter = ConsoleFilter::default();
+            let mut out = filter.push(first);
+            out.extend(filter.push(second));
+            out.extend(filter.finish());
+            assert_eq!(out, expected, "split at byte {split}");
+        }
+    }
+
+    #[test]
+    fn test_console_filter_byte_by_byte() {
+        let raw: &[u8] = b"a\x1b[8mha:note\x1b[0mb\r\n";
+        let mut filter = ConsoleFilter::default();
+        let mut out = Vec::new();
+        for byte in raw {
+            out.extend(filter.push(std::slice::from_ref(byte)));
+        }
+        out.extend(filter.finish());
+        assert_eq!(out, b"ab\n");
+    }
+
+    #[test]
+    fn test_console_filter_keeps_an_unterminated_note_at_the_end() {
+        let mut filter = ConsoleFilter::default();
+        assert_eq!(filter.push(b"a\x1b[8mha:cut"), b"a");
+        assert_eq!(filter.finish(), b"\x1b[8mha:cut");
+    }
+
+    #[test]
+    fn test_job_name_from_build_url() {
+        assert_eq!(
+            job_name_from_build_url("https://jenkins.example.com/job/some%20job/44/"),
+            Some(JobName("some job".to_owned()))
+        );
+        // a job that is itself called `job`
+        assert_eq!(
+            job_name_from_build_url("https://jenkins.example.com/job/job/44/"),
+            Some(JobName("job".to_owned()))
+        );
+        assert_eq!(
+            job_name_from_build_url("https://jenkins.example.com/job/folder/job/inner/44/"),
+            Some(JobName("folder/inner".to_owned()))
+        );
+        assert_eq!(
+            job_name_from_build_url("https://jenkins.example.com/computer/agent/"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_running_builds_from_computers() -> Result<(), Box<dyn Error>> {
+        let computers: ComputersWrapper<Computer> = serde_json::from_str(
+            r#"{"computer":[
+                {"displayName":"Built-In Node",
+                 "executors":[{"currentExecutable":null}],
+                 "oneOffExecutors":[
+                   {"currentExecutable":{"number":7,"timestamp":2000,
+                     "url":"https://j.example.com/job/pipeline/7/"}},
+                   {"currentExecutable":{"number":9,"timestamp":3000,
+                     "url":"https://j.example.com/job/flyweight%20only/9/"}}
+                 ]},
+                {"displayName":"agent-1",
+                 "executors":[
+                   {"currentExecutable":{"number":7,"timestamp":2000,
+                     "url":"https://j.example.com/job/pipeline/7/"}},
+                   {"currentExecutable":{"url":"https://j.example.com/job/pipeline/7/placeholder"}},
+                   {"currentExecutable":{"number":3,"timestamp":1000,
+                     "url":"https://j.example.com/job/freestyle/3/"}}
+                 ],
+                 "oneOffExecutors":[]}
+            ]}"#,
+        )?;
+        let builds = running_builds(&computers.computer);
+        let summary: Vec<(&str, u64, Option<&str>)> = builds
+            .iter()
+            .map(|build| (build.job.0.as_str(), build.number.0, build.node.as_deref()))
+            .collect();
+        assert_eq!(
+            summary,
+            vec![
+                ("freestyle", 3, Some("agent-1")),
+                // reported where the work happens, not on the flyweight
+                ("pipeline", 7, Some("agent-1")),
+                ("flyweight only", 9, Some("Built-In Node")),
+            ]
+        );
+        Ok(())
+    }
 
     #[test]
     fn test_deserialize_build_result() -> Result<(), Box<dyn Error>> {

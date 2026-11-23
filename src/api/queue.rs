@@ -91,6 +91,41 @@ impl Endpoint for GetQueueItem {
     }
 }
 
+/// The endpoint cancelling an item that is still waiting in the build queue
+///
+/// This does not affect a build the item already turned into; stop that with
+/// [`crate::api::build::StopBuild`] instead.
+#[derive(Debug, Clone, Builder)]
+#[builder(setter(strip_option), build_fn(error = "crate::Error"))]
+pub struct CancelQueueItem {
+    /// the id of the queue item
+    id: QueueItemId,
+}
+
+impl CancelQueueItem {
+    /// Create a builder for the endpoint.
+    #[must_use]
+    pub fn builder() -> CancelQueueItemBuilder {
+        CancelQueueItemBuilder::default()
+    }
+}
+
+impl Endpoint for CancelQueueItem {
+    fn method(&self) -> Method {
+        Method::POST
+    }
+
+    fn endpoint(&self) -> Cow<'static, str> {
+        "queue/cancelItem".into()
+    }
+
+    fn parameters(&self) -> QueryParams<'_> {
+        let mut params = QueryParams::default();
+        params.push("id", self.id.0);
+        params
+    }
+}
+
 /// The endpoint reporting which user Jenkins resolved the request credentials
 /// to
 ///
@@ -146,6 +181,17 @@ mod test {
     fn test_get_queue_item_endpoint() -> Result<(), Box<dyn Error>> {
         let endpoint = GetQueueItem::builder().id(QueueItemId(1234)).build()?;
         assert_eq!(endpoint.endpoint(), "queue/item/1234/api/json");
+        Ok(())
+    }
+
+    #[test]
+    fn test_cancel_queue_item_endpoint() -> Result<(), Box<dyn Error>> {
+        let endpoint = CancelQueueItem::builder().id(QueueItemId(1234)).build()?;
+        assert_eq!(endpoint.method(), Method::POST);
+        assert_eq!(endpoint.endpoint(), "queue/cancelItem");
+        let mut url = url::Url::parse("https://jenkins.example.com/")?;
+        endpoint.parameters().add_to_url(&mut url);
+        assert_eq!(url.query(), Some("id=1234"));
         Ok(())
     }
 

@@ -16,6 +16,7 @@
 //! there is deliberately no `Pageable`/`ResponsePage` equivalent.
 
 pub mod build;
+pub mod computer;
 pub mod job;
 pub mod queue;
 pub mod view;
@@ -29,15 +30,20 @@ use reqwest::Method;
 use serde::de::DeserializeOwned;
 use url::Url;
 
-use crate::api::build::{ConsoleText, GetBuild, GetLastBuild};
+use crate::api::build::{
+    BuildPermalink, ConsoleText, GetBuild, GetLastBuild, GetPermalinkBuild, ProgressiveConsoleText,
+    StopBuild, StopMode,
+};
+use crate::api::computer::ListComputers;
 use crate::api::job::{GetJob, GetJobConfig, ListBuilds, ListJobs, TriggerBuild};
-use crate::api::queue::{GetQueueItem, ListQueue, WhoAmI as WhoAmIEndpoint};
+use crate::api::queue::{CancelQueueItem, GetQueueItem, ListQueue, WhoAmI as WhoAmIEndpoint};
 use crate::api::view::{GetView, ListViews};
 use crate::config::{JenkinsAuth, JenkinsInstance};
 use crate::job_config::JobConfig;
 use crate::types::{
-    Build, BuildNumber, BuildsWrapper, Crumb, Job, JobName, JobsWrapper, QueueItem, QueueItemId,
-    QueueItemsWrapper, Revision, View, ViewName, ViewsWrapper, WhoAmI,
+    Build, BuildNumber, BuildsWrapper, Computer, ComputersWrapper, ConsoleChunk, Crumb, Job,
+    JobName, JobsWrapper, QueueItem, QueueItemId, QueueItemsWrapper, Revision, RunningBuild, View,
+    ViewName, ViewsWrapper, WhoAmI, running_builds,
 };
 
 /// the characters that have to be percent-encoded inside a URL path segment
@@ -391,6 +397,27 @@ fn queue_item_id_from_location(location: &str) -> Option<QueueItemId> {
         }
     }
     None
+}
+
+/// turn a progressive console response into a [`ConsoleChunk`]
+///
+/// Falls back to advancing by the size of the body if Jenkins sent no usable
+/// `X-Text-Size` header, which keeps a follower from re-reading the same bytes.
+fn console_chunk(start: u64, headers: &reqwest::header::HeaderMap, body: &[u8]) -> ConsoleChunk {
+    let next_start = headers
+        .get("X-Text-Size")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or_else(|| start.saturating_add(u64::try_from(body.len()).unwrap_or(u64::MAX)));
+    let more_data = headers
+        .get("X-More-Data")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("true"));
+    ConsoleChunk {
+        data: body.to_vec(),
+        next_start,
+        more_data,
+    }
 }
 
 /// the `tree` specification selecting the build fields this crate models
@@ -990,6 +1017,120 @@ macro_rules! client_impl {
                 self.text_response_body(&endpoint) $($await)*
             }
 
+            /// fetch the build one of a job's permalinks currently points at
+            ///
+            /// # Errors
+            ///
+            /// this can return an error if the web request fails or Jenkins
+            /// returns an error response, in particular a 404 if the job has
+            /// no build matching the permalink
+            pub $($async)* fn permalink_build(
+                &self,
+                name: &JobName,
+                permalink: BuildPermalink,
+            ) -> Result<Build, crate::Error> {
+                let endpoint = GetPermalinkBuild::builder()
+                    .name(name.clone())
+                    .permalink(permalink)
+                    .build()?;
+                self.json_response_body(&endpoint) $($await)*
+            }
+
+            /// read a build's console log from a byte offset onwards
+            ///
+            /// Call this again with [`ConsoleChunk::next_start`] for as long
+            /// as [`ConsoleChunk::more_data`] is set to follow a running
+            /// build.
+            ///
+            /// # Errors
+            ///
+            /// this can return an error if the web request fails or Jenkins
+            /// returns an error response
+            pub $($async)* fn console_progressive(
+                &self,
+                name: &JobName,
+                number: BuildNumber,
+                start: u64,
+            ) -> Result<ConsoleChunk, crate::Error> {
+                let endpoint = ProgressiveConsoleText::builder()
+                    .name(name.clone())
+                    .number(number)
+                    .start(start)
+                    .build()?;
+                let method = endpoint.method();
+                let path = endpoint.endpoint();
+                let query = endpoint.parameters();
+                let (_status, headers, response_body) =
+                    self.rest(method, &path, query, None) $($await)*?;
+                Ok(console_chunk(start, &headers, &response_body))
+            }
+
+            /// stop a running build
+            ///
+            /// Jenkins only acknowledges the request, so the build can keep
+            /// running for a moment afterwards. Use [`Self::wait_for_build`]
+            /// to see it finish.
+            ///
+            /// # Errors
+            ///
+            /// this can return an error if the web request fails or Jenkins
+            /// returns an error response, in particular a 404 for
+            /// [`StopMode::Terminate`] and [`StopMode::Kill`] on a build that
+            /// is not a Pipeline build
+            pub $($async)* fn stop_build(
+                &self,
+                name: &JobName,
+                number: BuildNumber,
+                mode: StopMode,
+            ) -> Result<(), crate::Error> {
+                let endpoint = StopBuild::builder()
+                    .name(name.clone())
+                    .number(number)
+                    .mode(mode)
+                    .build()?;
+                self.ignore_response_body(&endpoint) $($await)*
+            }
+
+            /// list the nodes of the controller with their executors
+            ///
+            /// # Errors
+            ///
+            /// this can return an error if the web request fails or Jenkins
+            /// returns an error response
+            pub $($async)* fn computers(&self) -> Result<Vec<Computer>, crate::Error> {
+                let endpoint = ListComputers::builder().build()?;
+                let wrapper: ComputersWrapper<Computer> =
+                    self.json_response_body(&endpoint) $($await)*?;
+                Ok(wrapper.computer)
+            }
+
+            /// list the builds currently executing on the controller, oldest
+            /// first
+            ///
+            /// # Errors
+            ///
+            /// this can return an error if the web request fails or Jenkins
+            /// returns an error response
+            pub $($async)* fn running_builds(&self) -> Result<Vec<RunningBuild>, crate::Error> {
+                let computers = self.computers() $($await)*?;
+                Ok(running_builds(&computers))
+            }
+
+            /// cancel an item that is still waiting in the build queue
+            ///
+            /// # Errors
+            ///
+            /// this can return an error if the web request fails or Jenkins
+            /// returns an error response, in particular a 404 if the item is
+            /// no longer in the queue
+            pub $($async)* fn cancel_queue_item(
+                &self,
+                id: QueueItemId,
+            ) -> Result<(), crate::Error> {
+                let endpoint = CancelQueueItem::builder().id(id).build()?;
+                self.ignore_response_body(&endpoint) $($await)*
+            }
+
             /// everything currently waiting in the controller's build queue
             ///
             /// # Errors
@@ -1242,6 +1383,25 @@ client_impl!(
 mod test {
     use super::*;
     use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_console_chunk_uses_the_jenkins_headers() -> Result<(), Box<dyn std::error::Error>> {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("X-Text-Size", "150".parse()?);
+        headers.insert("X-More-Data", "true".parse()?);
+        let chunk = console_chunk(100, &headers, b"hello");
+        assert_eq!(chunk.next_start, 150);
+        assert!(chunk.more_data);
+        assert_eq!(chunk.data, b"hello");
+        Ok(())
+    }
+
+    #[test]
+    fn test_console_chunk_without_headers_is_final_and_advances() {
+        let chunk = console_chunk(100, &reqwest::header::HeaderMap::new(), b"hello");
+        assert_eq!(chunk.next_start, 105);
+        assert!(!chunk.more_data);
+    }
 
     #[test]
     fn test_encode_path_segment_handles_spaces() {
