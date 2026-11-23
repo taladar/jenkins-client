@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 - 2026-11-23 13:59:49Z
+
+### 🚀 Features
+
+- *(build)* Add build control and log following
+
 ## 0.3.1 - 2026-11-23 09:31:14Z
 
 ### ⚙️ Miscellaneous Tasks
