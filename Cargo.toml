@@ -18,7 +18,7 @@ exclude = [".env", "tarpaulin-report.html", "tarpaulin-report.json"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bytes = "1.12.1"
+bytes = "1.12.2"
 derive_builder = "0.20.2"
 derive_more = { version = "2.1.1", features = ["debug", "display", "from_str"] }
 fs-err = "3.3.2"
@@ -39,9 +39,9 @@ serde_path_to_error = "0.1.20"
 thiserror = { version = "2.0.21" }
 time = { version = "0.3.55", features = ["macros", "serde", "serde-human-readable"] }
 tokio = { version = "1.54.1", features = ["time"] }
-toml = "1.2.1"
+toml = "1.2.2"
 tracing = { version = "0.1.44" }
-url = "2.5.8"
+url = "2.5.9"
 
 [dev-dependencies]
 dotenvy = "0.15.7"
